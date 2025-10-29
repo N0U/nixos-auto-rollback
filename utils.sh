@@ -1,0 +1,58 @@
+#!/bin/bash
+
+createYq() {
+  yq -n > "$1"
+}
+
+getYq() {
+  local result
+  if [[ -z "$3" ]]; then
+    result=$(yq "$2" "$1");
+  else
+    result=$(yq "$2 // $3" "$1");
+  fi
+  echo "$result"
+}
+
+setYq() {
+  echo $(yq -i "$2 = $3" "$1");
+}
+
+delYq() {
+  yq -iy "del($2)" $1
+}
+
+getOption() {
+  getYq "$CONFIG_FILE" "$1" "$2"
+}
+
+createData() {
+  createYq "$DATA_FILE"
+}
+
+getData() {
+  getYq "$DATA_FILE" "$1" "$2"
+}
+
+setData() {
+  setYq "$DATA_FILE" "$1" "$2"
+}
+
+delData() {
+  delYq "$DATA_FILE" "$1"
+}
+
+info() {
+  if [ "$VERBOSE" = false ]; then
+    return 0
+  fi
+  echo $1
+}
+
+log() {
+  echo $1
+}
+
+error() {
+  echo $1 >&2
+}

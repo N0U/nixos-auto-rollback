@@ -1,102 +1,236 @@
 #!/bin/bash
 
-DATA_FILE="./data.yml"
-CONFIG_FILE="config.yml"
+source "./utils.sh"
 
-VERBOSE=$(yq -r '.verbose // "false"' "$CONFIG_FILE");
-TIMEOUT=$(yq -r '.timeout // "2m"' "$CONFIG_FILE");
-MOTD_FILE=$(yq -r '.motd' "$CONFIG_FILE");
-
-ROLLBACK_REBOOT=$(yq -r '.rollback.reboot // false' "$CONFIG_FILE");
-ROLLBACK_LIMIT=$(yq -r '.rollback.limit // 5' "$CONFIG_FILE");
-
-NETWORK_ENABLE=$(yq -r '.network.enable // false' "$CONFIG_FILE");
-NETWORK_PING=$(yq -r '.network.ping // "1.1.1.1"' "$CONFIG_FILE");
-NETWORK_TIMEOUT=$(yq -r '.network.timeout // 5' "$CONFIG_FILE");
-
-SSHD=$(yq -r '.sshd // false' "$CONFIG_FILE");
-
-if [ ! -f "$DATA_FILE" ]; then
-  yq -n '.rollback_count = 0' > "$DATA_FILE"
+if [[ $EUID -eq 0 ]]; then
+    DEBUG=false
+else
+    DEBUG=true
 fi
 
-CUR_ROLLBACK_COUNT=$(yq -r '.rollback_count // 0' "$DATA_FILE")
+COMMANDS=("yq" "nix-env" "nixos-rebuild")
+for cmd in "${COMMANDS[@]}"; do
+  command -v "$cmd" &> /dev/null;
+  if [[ $? -ne 0 ]]; then
+    error "Command $cmd not found"
+    if [[ "$DEBUG" = false ]]; then
+      exit 1
+    fi
+  fi
+done
+
+DATA_FILE="data.yml"
+CONFIG_FILE="config.yml"
+
+VERBOSE=$(getOption ".verbose" "false");
+TIMEOUT=$(getOption ".timeout" "\"2m\"");
+MOTD_FILE=$(getOption ".notify.motd");
+
+ROLLBACK_REBOOT=$(getOption ".rollback.reboot" "false");
+ROLLBACK_GENERATION=$(getOption ".rollback.generation");
+
+if [[ -n "$ROLLBACK_GENERATION" ]]; then
+  GENERATION_EXIST=$(nix-env --list-generations | awk '{print $1}' | grep "$ROLLBACK_GENERATION");
+if [[ "$GENERATION_EXIST" != "$ROLLBACK_GENERATION" ]]; then
+    error "Rollback generation $ROLLBACK_GENERATION doesn't exist"
+    unset ROLLBACK_GENERATION
+  fi
+fi
+
+NETWORK_PING_TEST_ENABLE=$(getOption ".network.ping_test.enable" "false");
+readarray -t NETWORK_PING_TEST_IP < <(getOption ".network.ping_test.ip[]");
+NETWORK_PING_TEST_TIMEOUT=$(getOption ".network.ping_test.timeout" "5");
+
+if [ ${#NETWORK_PING_TEST_IP[@]} -eq 0 ]; then
+  NETWORK_PING_TEST_IP=("1.1.1.1" "8.8.8.8")
+fi
+
+DNS_PING_TEST_ENABLE=$(getOption ".dnsresolve.ping_test.enable" "false");
+readarray -t DNS_PING_TEST_DOMAINS < <(getOption ".dnsresolve.ping_test.domains[]");
+DNS_PING_TEST_TIMEOUT=$(getOption ".dnsresolve.ping_test.timeout" "5");
+
+if [ ${#DNS_PING_TEST_DOMAINS[@]} -eq 0 ]; then
+  DNS_PING_TEST_DOMAINS=("google.com")
+fi
+
+readarray -t SERVICES < <(getOption ".services[]");
+
+if [ ! -f "$DATA_FILE" ]; then
+  createData
+fi
+
+LAST_GOOD_GENERATION=$(getData ".last_good_generation");
+LAST_TEST_RESULT=$(getData ".last_result");
 
 # This script should run after all targets
 # Wait a little 
 sleep $TIMEOUT
 
-info() {
-  if [ "$VERBOSE" = false ]; then
-    return 0
-  fi
-  echo $1
-}
-
-log() {
-  echo $1
-}
 
 updateMotd() {
   if [[ -z "$MOTD_FILE" ]]; then
     return 0
   fi
   info "Update motd..."
-  date=$(date '+%Y-%m-%d %H:%M:%S')
-  MOTD_TEXT="$date
-  Failed: $1
-  So far $CUR_ROLLBACK_COUNT rollback happened
-  "
-  echo "$MOTD_TEXT" >> "$MOTD_FILE"
+  local date=$(date '+%Y-%m-%d %H:%M:%S')
+  local motd_text="$date
+  $1"
+  echo "$motd_text" > "$MOTD_FILE"
+}
+
+rollbackNotify() {
+  updateMotd $1
+  setData ".last_result" "\"$1\""
+}
+
+notify() {
+  info "$1"
+}
+
+execDbg() {
+  if [ "$DEBUG" = true ]; then
+    echo "Run $1"
+  else
+    $1
+  fi
 }
 
 rollback () {
-  if [ $CUR_ROLLBACK_COUNT -gt $ROLLBACK_LIMIT ]; then
-    log "Rollback limit reached"
-    return 0
-  fi
-  ((CUR_ROLLBACK_COUNT++))
-  info "Rollback count: $CUR_ROLLBACK_COUNT"
-  yq -iy ".rollback_count = $CUR_ROLLBACK_COUNT" "$DATA_FILE"
-  log "Rolling back..."
-  echo "...rolling back"
+  local current_generation=$(nix-env --list-generations | grep current | awk '{print $1}');
+  local rollback_generation
 
-  if [ "$ROLLBACK_REBOOT" = true ]; then
-    log "Rebooting..."
+  if [[ -n "$ROLLBACK_GENERATION" ]]; then
+    rollback_generation="$ROLLBACK_GENERATION"
+  else
+    rollback_generation="$LAST_GOOD_GENERATION"
   fi
-  # nixos-rebuild switch --rollback
+
+  if [[ "$rollback_generation" = "$current_generation" ]]; then
+    error "Cannot rollback due to current generation $current_generation is a rollback target $rollback_generation"
+    return 1
+  fi
+
+  if [[ -n "$rollback_generation" ]]; then
+    error "Cannot find a generation to rollback"
+    return 1
+  fi
+
+  log "Rolling back..."
+
+  local rollback_cmd="sleep 10s && nixos-rebuild --switch-generation $rollback_generation"
+  if [ "$ROLLBACK_REBOOT" = true ]; then
+    rollback_cmd="$rollback_cmd && reboot"
+  fi
+
+  if [ "$DEBUG" = true ]; then
+    echo "Run $rollback_cmd"
+  else
+    nohup bash -c "$rollback_cmd" > rebuild.log 2> rebuilderror.log &
+  fi
+  return 0
+}
+
+pingTest() {
+  local timeout="$1"
+  shift
+
+  for addr in "$@"; do
+    info "Ping $addr..."
+    ping -c 1 -W "$timeout" "$addr" &> /dev/null
+    if [[ $? -eq 0 ]]; then
+      info "$addr succesfully pinged"
+      return 0
+    fi
+  done
+  return 1
 }
 
 testNetwork() {
-  info "Testing network..."
-  ping -c 1 -W "$NETWORK_TIMEOUT" "$NETWORK_PING" &> /dev/null
-  return $?
+  local -n _ref=$1
+  info "Run network tests..."
+  if [[ "$NETWORK_PING_TEST_ENABLE" = true ]]; then
+    pingTest "$NETWORK_PING_TEST_TIMEOUT" "${NETWORK_PING_TEST_IP[@]}"
+    if [[ $? -ne 0 ]]; then
+      log "Network ping test failed"
+      _ref="ping"
+      return 1
+
+    fi
+  fi
+  return 0
 }
 
-testService() {
-  systemctl is-active --quiet "$1"
-  return $?
+testDns() {
+  local -n _ref="$1"
+  info "Run dns tests..."
+  if [[ "$DNS_PING_TEST_ENABLE" = true ]]; then
+    pingTest "$DNS_PING_TEST_TIMEOUT" "${DNS_PING_TEST_DOMAINS[@]}"
+    if [[ $? -ne 0 ]]; then
+      log "Dns ping test failed"
+      _ref="ping"
+      return 1
+    fi
+  fi
+  return 0
+}
+
+testServices() {
+  local -n _ref=$1
+  info "Run service tests..."
+  for serv in "${SERVICES[@]}"; do
+    systemctl is-active --quiet "$serv"
+    if [[ $? -ne 0 ]]; then
+      log "$serv test failed"
+      _ref="$serv"
+      return 1
+    fi
+  done
+  return 0
 }
 
 onFail() {
-  log "Failed: $1"
-  updateMotd "$1"
+  local notifyText
+
   rollback
+
+  if [[ $? -ne 0 ]]; then
+    notifyText="$1
+Rollback failed"
+  else
+    notifyText="$1"
+  fi
+
+  rollbackNotify "$notifyText"
+
   exit 0
 }
 
-if [ "$NETWORK_ENABLE" = true ]; then
-  if ! testNetwork; then
-    onFail "network"
-  fi
+testNetwork TEST_RESULT
+if [[ $? -ne 0 ]]; then
+  onFail "Network: $TEST_RESULT test failed"
 fi
 
-if [ "$SSHD" = true ]; then
-  if ! testService "sshd.service"; then
-    onFail "sshd"
-  fi
+testDns TEST_RESULT
+if [[ $? -ne 0 ]]; then
+  onFail "DNS resolve: $TEST_REULST test failed"
+fi
+
+testServices TEST_RESULT
+if [[ $? -ne 0 ]]; then
+  onFail "Service: $TEST_RESULT test failed"
 fi
 
 log "All tests passed"
-yq -iy '.rollback_count = 0' "$DATA_FILE"
-log "Rollback count reseted"
+
+LAST_GOOD_GENERATION=$(nix-env --list-generations | grep current | awk '{print $1}');
+setData ".last_good_generation" "$LAST_GOOD_GENERATION"
+
+log "Generation $LAST_GOOD_GENERATION saved as succesful"
+
+if [[ -n "$LAST_TEST_RESULT" ]]; then
+  info "Last test result isn't empty"
+  notify "$LAST_TEST_RESULT"
+  delData ".last_result" 
+fi
+
+
