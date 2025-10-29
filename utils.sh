@@ -56,3 +56,8 @@ log() {
 error() {
   echo $1 >&2
 }
+
+isServiceActive() {
+  systemctl is-active --quiet "$1"
+  return $?
+}

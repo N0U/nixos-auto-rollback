@@ -37,6 +37,7 @@ if [[ "$GENERATION_EXIST" != "$ROLLBACK_GENERATION" ]]; then
   fi
 fi
 
+NETWORK_ENABLE=$(getOption ".network.enable" "false");
 NETWORK_PING_TEST_ENABLE=$(getOption ".network.ping_test.enable" "false");
 readarray -t NETWORK_PING_TEST_IP < <(getOption ".network.ping_test.ip[]");
 NETWORK_PING_TEST_TIMEOUT=$(getOption ".network.ping_test.timeout" "5");
@@ -45,6 +46,7 @@ if [ ${#NETWORK_PING_TEST_IP[@]} -eq 0 ]; then
   NETWORK_PING_TEST_IP=("1.1.1.1" "8.8.8.8")
 fi
 
+DNS_ENABLE=$(getOption ".dnsresolve.enable" "false");
 DNS_PING_TEST_ENABLE=$(getOption ".dnsresolve.ping_test.enable" "false");
 readarray -t DNS_PING_TEST_DOMAINS < <(getOption ".dnsresolve.ping_test.domains[]");
 DNS_PING_TEST_TIMEOUT=$(getOption ".dnsresolve.ping_test.timeout" "5");
@@ -138,7 +140,7 @@ pingTest() {
     info "Ping $addr..."
     ping -c 1 -W "$timeout" "$addr" &> /dev/null
     if [[ $? -eq 0 ]]; then
-      info "$addr succesfully pinged"
+      info "$addr responded"
       return 0
     fi
   done
@@ -147,23 +149,45 @@ pingTest() {
 
 testNetwork() {
   local -n _ref=$1
+
   info "Run network tests..."
+  info "Check network-online.targett"
+
+  isServiceActive "network-online.target"
+  if [[ $? -ne 0 ]]; then
+    log "network-online.target failed"
+    _ref="network-online.target"
+    return 1
+  fi
+
   if [[ "$NETWORK_PING_TEST_ENABLE" = true ]]; then
+    info "Run ping test..."
     pingTest "$NETWORK_PING_TEST_TIMEOUT" "${NETWORK_PING_TEST_IP[@]}"
     if [[ $? -ne 0 ]]; then
       log "Network ping test failed"
       _ref="ping"
       return 1
-
     fi
   fi
+  info "Network test passed"
   return 0
 }
 
 testDns() {
   local -n _ref="$1"
-  info "Run dns tests..."
+  info "Run dns resolver tests..."
+  
+  info "Check systemd-resolved.service"
+  isServiceActive "systemd-resolved.service"
+
+  if [[ $? -ne 0 ]]; then
+    log "systemd-resolved.service failed"
+    _ref="systemd-resolved.service"
+    return 1
+  fi
+
   if [[ "$DNS_PING_TEST_ENABLE" = true ]]; then
+    info "Run ping test..."
     pingTest "$DNS_PING_TEST_TIMEOUT" "${DNS_PING_TEST_DOMAINS[@]}"
     if [[ $? -ne 0 ]]; then
       log "Dns ping test failed"
@@ -178,7 +202,7 @@ testServices() {
   local -n _ref=$1
   info "Run service tests..."
   for serv in "${SERVICES[@]}"; do
-    systemctl is-active --quiet "$serv"
+    isServiceActive "$serv"
     if [[ $? -ne 0 ]]; then
       log "$serv test failed"
       _ref="$serv"
@@ -205,19 +229,25 @@ Rollback failed"
   exit 0
 }
 
-testNetwork TEST_RESULT
-if [[ $? -ne 0 ]]; then
-  onFail "Network: $TEST_RESULT test failed"
+if [[ "$NETWORK_ENABLE" = true ]]; then
+  testNetwork TEST_RESULT
+  if [[ $? -ne 0 ]]; then
+    onFail "Network: $TEST_RESULT test failed"
+  fi
 fi
 
-testDns TEST_RESULT
-if [[ $? -ne 0 ]]; then
-  onFail "DNS resolve: $TEST_REULST test failed"
+if [[ "$DNS_ENABLE" = true ]]; then
+  testDns TEST_RESULT
+  if [[ $? -ne 0 ]]; then
+    onFail "DNS resolve: $TEST_REULST test failed"
+  fi
 fi
 
-testServices TEST_RESULT
-if [[ $? -ne 0 ]]; then
-  onFail "Service: $TEST_RESULT test failed"
+if [[ -n "$SERVICES" ]]; then
+  testServices TEST_RESULT
+  if [[ $? -ne 0 ]]; then
+    onFail "Service: $TEST_RESULT test failed"
+  fi
 fi
 
 log "All tests passed"
