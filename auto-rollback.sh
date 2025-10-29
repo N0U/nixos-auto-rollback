@@ -20,7 +20,7 @@ for cmd in "${COMMANDS[@]}"; do
 done
 
 DATA_FILE="data.yml"
-CONFIG_FILE="config.yml"
+#CONFIG_FILE="config.yml"
 
 VERBOSE=$(getOption ".verbose" "false");
 TIMEOUT=$(getOption ".timeout" "\"2m\"");
@@ -74,12 +74,12 @@ updateMotd() {
   info "Update motd..."
   local date=$(date '+%Y-%m-%d %H:%M:%S')
   local motd_text="$date
-  $1"
+$1"
   echo "$motd_text" > "$MOTD_FILE"
 }
 
 rollbackNotify() {
-  updateMotd $1
+  updateMotd "$1"
   setData ".last_result" "\"$1\""
 }
 
