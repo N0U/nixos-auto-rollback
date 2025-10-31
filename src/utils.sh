@@ -1,5 +1,3 @@
-#!/bin/bash
-
 createYq() {
   yq -n > "$1"
 }
@@ -7,9 +5,9 @@ createYq() {
 getYq() {
   local result
   if [[ -z "$3" ]]; then
-    result=$(yq "$2" "$1");
+    result=$(yq -r "$2" "$1");
   else
-    result=$(yq "$2 // $3" "$1");
+    result=$(yq -r "$2 // $3" "$1");
   fi
   echo "$result"
 }
