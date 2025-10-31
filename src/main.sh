@@ -180,7 +180,7 @@ rollback () {
     return 1
   fi
 
-  if [[ -n "$rollback_generation" ]]; then
+  if [[ -z "$rollback_generation" ]]; then
     error "Cannot find a generation to rollback"
     return 1
   fi
