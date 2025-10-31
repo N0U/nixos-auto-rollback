@@ -189,7 +189,7 @@ rollback () {
 
   ROLLBACK_TO="$rollback_generation"
 
-  local rollback_cmd="sleep 10s && $NIXOS_REBUILD --switch-generation $rollback_generation"
+  local rollback_cmd="sleep 10s && $NIXOS_REBUILD swtich --switch-generation $rollback_generation"
   if [ "$ROLLBACK_REBOOT" = true ]; then
     rollback_cmd="$rollback_cmd && reboot"
   fi
