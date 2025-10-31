@@ -61,13 +61,13 @@ isServiceActive() {
 }
 
 listGenerations() {
-  nixos-rebuild list-generations | sed '1d'
+  "$NIXOS_REBUILD" list-generations | sed '1d'
 }
 
 findGenerations() {
-  nixos-rebuild list-generations | sed '1d' | awk '$1 == val { print $1 }' "val=$1"
+  "$NIXOS_REBUILD" list-generations | sed '1d' | awk '$1 == val { print $1 }' "val=$1"
 }
 
 getCurrentGeneration() {
-  nixos-rebuild list-generations | sed '1d' | awk '$NF == "True" { print $1 }'
+  "$NIXOS_REBUILD" list-generations | sed '1d' | awk '$NF == "True" { print $1 }'
 }

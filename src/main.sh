@@ -1,5 +1,7 @@
 #!/bin/bash
 
+NIXOS_REBUILD="/run/current-system/sw/bin/nixos-rebuild"
+
 # Get the directory of the current script
 SCRIPT_DIR="$(dirname "${BASH_SOURCE[0]}")"
 
@@ -7,8 +9,8 @@ SCRIPT_DIR="$(dirname "${BASH_SOURCE[0]}")"
 if [[ $EUID -eq 0 ]]; then
   DEBUG=false
   if [[ "$1" != "--daemonize" ]]; then
-    nohup "$0" --daemonize >"$DATA_DIR/log" 2>"$DATA_DIR/err" </dev/null &
-    exit $?
+    # nohup "$0" --daemonize >"$DATA_DIR/log" 2>"$DATA_DIR/err" </dev/null &
+    # exit $?
   fi
 else
   DEBUG=true
@@ -187,7 +189,7 @@ rollback () {
 
   ROLLBACK_TO="$rollback_generation"
 
-  local rollback_cmd="sleep 10s && nixos-rebuild --switch-generation $rollback_generation"
+  local rollback_cmd="sleep 10s && $NIXOS_REBUILD --switch-generation $rollback_generation"
   if [ "$ROLLBACK_REBOOT" = true ]; then
     rollback_cmd="$rollback_cmd && reboot"
   fi

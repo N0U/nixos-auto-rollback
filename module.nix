@@ -12,87 +12,104 @@ in {
       description = "Timeout before tests start in seconds";
     };
     notify = {
-      motd: lib.mkOption {
+      motd = lib.mkOption {
         type = lib.types.str;
+        default = "";
         description = "Motd file to modify on tests failure";
         example = "/etc/motd";
       };
     };
     rollback = {
-      reboot =  = mkOption {
-        type = types.bool;
+      reboot = lib.mkOption {
+        type = lib.types.bool;
         default = false;
         description = "Reboot on succesful rollback";
       };
       generation = lib.mkOption {
         type = lib.types.int;
+        default = 0;
         description = ''
         Generation to rollback to
         if not suplied or invalid the last succesful generation will be used
         '';
       };
     };
-    network = {
-      enable = lib.mkEnableOption "Enable network test";
-      ping_test = {
-        enable = lib.mkEnableOption "Enable ping test for network test";
-        timeout = lib.mkOption {
-          type = lib.types.ints.positive;
-          default = 5;
-          description = "Timeout in seconds for ping to wait for response";
-        };
-        ip = lib.mkOption {
-          type = lib.types.listOf str;
-          default = ("1.1.1.1" "8.8.8.8");
-          description = ''
-          List of ip addresses for ping test
-          Ping test is failed when non of addresses respond
-          '';
-        };
+    network = lib.mkEnableOption "Enable network test";
+    resolve = lib.mkEnableOption "Enable resolver test";
+    ping_test = {
+      timeout = lib.mkOption {
+        type = lib.types.ints.positive;
+        default = 5;
+        description = "Timeout in seconds for ping to wait for response";
+      };
+      addrs = lib.mkOption {
+        type = lib.types.listOf lib.types.str;
+        example = ["1.1.1.1" "8.8.8.8"];
+        default = [];
+        description = ''
+        List of ip addresses for ping test
+        Ping test is failed when non of addresses respond
+        '';
+      };
+      domains = lib.mkOption {
+        type = lib.types.listOf lib.types.str;
+        example = ["google.com" "example.com"];
+        default = [];
+        description = ''
+        List of ip addresses for ping test
+        Ping test is failed when non of addresses respond
+        '';
       };
     };
-    dnsresolve = {
-      enable = lib.mkEnableOption "Enable dns resolver tests";
-      ping_test = {
-        enable = lib.mkEnableOption "Enable ping test for dns test";
-        timeout = lib.mkOption {
-          type = lib.types.ints.positive;
-          default = 5;
-          description = "Timeout in seconds for ping to wait for response";
-        };
-        domains = lib.mkOption {
-          type = lib.types.listOf str;
-          default = ("google.com");
-          description = ''
-          List of domains for ping test
-          Ping test is failed when non of addresses respond
-          '';
-        };
+    sshd = lib.mkEnableOption "Enable sshd service tests";
+    echo_test = {
+      timeout = lib.mkOption {
+        type = lib.types.ints.positive;
+        default = 5;
+        description = "Timeout in seconds for script to wait for connection";
+      };
+      ip_service = lib.mkOption {
+        type = lib.types.str;
+        default = "https://api.ipify.org";
+        description = "Service to get machine's external ip";
+      };
+      ports = lib.mkOption {
+        type = lib.types.listOf lib.types.port;
+        default = [];
+        example = [ 22 ];
+        description = "Ports to test";
       };
     };
     services = lib.mkOption {
-      tpye = lib.types.listOf str;
-      default = ();
+      type = lib.types.listOf lib.types.str;
       description = "List of essential services";
-      example = ("sshd.service")
+      default = [];
     };
   };
 
   config = lib.mkIf config.services.auto-rollback-service.enable {
-    # systemd.services.auto-rollback-service = {
-    #   description = "Auto Rollback Service";
-    #   wantedBy = [ "multi-user.target" ];
-    #   after = [ "network.target" ];
-    #   serviceConfig = {
-    #     Type = "oneshot";
-    #     RemainAfterExit = true;
-    #     User = "root";
-    #     ExecStart = "${package}/bin/auto-rollback.sh";
-    #     Restart = "always";
-    #     RestartSec = 5;
-    #   };
-    # };
-    environment.etc."auto-rollback-service/config.yml".text = lib.generators.toYAML config.services.auto-rollback-service;
+    systemd.services.auto-rollback-service = {
+      description = "Auto Rollback Service";
+      wantedBy = [ "multi-user.target" ];
+      after = [ "network-online.target" ];
+      want = [ "network-online.target" ];
+      serviceConfig = {
+        Type = "oneshot";
+        User = "root";
+        ExecStart = "${package}/bin/auto-rollback.sh";
+        Environment = "CONFIG_FILE=\"/etc/auto-rollback-service/config.json\" DATA_DIR=\"/var/lib/auto-rollback-service\"";
+        WorkingDirectory = "/var/lib/auto-rollback-service";
+      };
+    };
+   systemd.tmpfiles.settings = {
+      "auto-rollback-service" = {
+        "/var/lib/auto-rollback-service".d = {
+          group = "root";
+          user = "root";
+          mode = "0744";
+        };
+      };
+    };
+    environment.etc."auto-rollback-service/config.json".text = lib.strings.toJSON config.services.auto-rollback-service;
   };
 }
-
