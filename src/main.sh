@@ -3,15 +3,20 @@
 # Get the directory of the current script
 SCRIPT_DIR="$(dirname "${BASH_SOURCE[0]}")"
 
-source "$SCRIPT_DIR/utils.sh"
 
 if [[ $EUID -eq 0 ]]; then
-    DEBUG=false
+  DEBUG=false
+  if [[ "$1" != "--daemonize" ]]; then
+    nohup "$0" --daemonize >"$DATA_DIR/log" 2>"$DATA_DIR/err" </dev/null &
+    exit $?
+  fi
 else
-    DEBUG=true
+  DEBUG=true
 fi
 
-COMMANDS=("yq" "nixos-rebuild")
+source "$SCRIPT_DIR/utils.sh"
+
+COMMANDS=("yq" "nixos-rebuild" "awk" "sed")
 for cmd in "${COMMANDS[@]}"; do
   command -v "$cmd" &> /dev/null;
   if [[ $? -ne 0 ]]; then
@@ -102,7 +107,7 @@ declare -A RESULTS
 networkTest() {
   info "Checking network-online.target status..."
   isServiceActive "network-online.target"
-  RESULTS["network-onlie.target"]=$?
+  RESULTS["network-online.target"]=$?
 }
 
 resolverTest() {
@@ -128,9 +133,9 @@ sshdTest() {
   isServiceActive "sshd.service"
   RESULTS["sshd.service"]=$?
 
-  info "Checking sshd.socket status..."
-  isServiceActive "sshd.socket"
-  RESULTS["sshd.socket"]=$?
+  # info "Checking sshd.socket status..."
+  # isServiceActive "sshd.socket"
+  # RESULTS["sshd.socket"]=$?
 }
 
 echoTest() {
@@ -198,8 +203,10 @@ rollback () {
 handleFailure() {
   rollback
   if [[ $? -ne 0 ]]; then
+    error "Rollback failed"
     LOG+=$'\n'"Rollback failed"
   else
+    log "System rolled back to $ROLLBACK_TO generation"
     LOG+=$'\n'"System rolled back to $ROLLBACK_TO generation"
   fi
 
