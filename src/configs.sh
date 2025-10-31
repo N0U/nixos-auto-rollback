@@ -7,8 +7,8 @@ ROLLBACK_REBOOT=$(getOption ".rollback.reboot" "false");
 ROLLBACK_GENERATION=$(getOption ".rollback.generation");
 
 if [[ -n "$ROLLBACK_GENERATION" && "$ROLLBACK_GENERATION" -gt 0 ]]; then
-  GENERATION_EXIST=$(findGeneration "$ROLLBACK_GENERATION");
-  if [[ "$GENERATION_EXIST" != "$ROLLBACK_GENERATION" ]]; then
+  doesGenerationExist "$ROLLBACK_GENERATION"
+  if [[ "$?" -ne 0 ]]; then
     error "Rollback generation $ROLLBACK_GENERATION doesn't exist"
     unset ROLLBACK_GENERATION
   fi

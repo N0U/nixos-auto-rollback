@@ -64,10 +64,19 @@ listGenerations() {
   "$NIXOS_REBUILD" list-generations | sed '1d'
 }
 
-findGenerations() {
+findGeneration() {
   "$NIXOS_REBUILD" list-generations | sed '1d' | awk '$1 == val { print $1 }' "val=$1"
 }
 
 getCurrentGeneration() {
   "$NIXOS_REBUILD" list-generations | sed '1d' | awk '$NF == "True" { print $1 }'
+}
+
+doesGenerationExist() {
+  local gen=$(findGeneration "$1");
+  if [[ "$gen" != "$1" ]]; then
+    return 1
+  else
+    return 0
+  fi
 }

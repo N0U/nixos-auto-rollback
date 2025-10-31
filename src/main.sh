@@ -1,6 +1,7 @@
 #!/bin/bash
 
 NIXOS_REBUILD="/run/current-system/sw/bin/nixos-rebuild"
+NIX_ENV="/run/current-system/sw/bin/nix-env"
 
 # Get the directory of the current script
 SCRIPT_DIR="$(dirname "${BASH_SOURCE[0]}")"
@@ -185,11 +186,19 @@ rollback () {
     return 1
   fi
 
+  doesGenerationExist "$rollback_generation"
+  if [[ "$?" -ne 0 ]]; then
+    error "Target generation $rollback_generation doesn't exist"
+    return 1
+  fi
+
   log "Rolling back..."
 
   ROLLBACK_TO="$rollback_generation"
 
-  local rollback_cmd="sleep 10s && $NIXOS_REBUILD swtich --switch-generation $rollback_generation"
+  local rollback_cmd="sleep 10s && \
+    $NIX_ENV --switch-generation ${rollback_generation} -p /nix/var/nix/profiles/system && \
+    /nix/var/nix/profiles/system-${rollback_generation}-link/bin/switch-to-configuration switch"
   if [ "$ROLLBACK_REBOOT" = true ]; then
     rollback_cmd="$rollback_cmd && reboot"
   fi
