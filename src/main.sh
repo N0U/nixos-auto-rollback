@@ -11,7 +11,7 @@ else
     DEBUG=true
 fi
 
-COMMANDS=("yq" "nix-env" "nixos-rebuild")
+COMMANDS=("yq" "nixos-rebuild")
 for cmd in "${COMMANDS[@]}"; do
   command -v "$cmd" &> /dev/null;
   if [[ $? -ne 0 ]]; then
@@ -159,7 +159,7 @@ servicesTest() {
 }
 
 rollback () {
-  local current_generation=$(nix-env --list-generations | grep current | awk '{print $1}');
+  local current_generation=$(getCurrentGeneration);
   local rollback_generation
 
   if [[ -n "$ROLLBACK_GENERATION" ]]; then
@@ -253,7 +253,7 @@ if [[ "$TESTS_FAILED" = true ]]; then
   handleFailure
 else
   log "All tests passed"
-  LAST_GOOD_GENERATION=$(nix-env --list-generations | grep current | awk '{print $1}');
+  LAST_GOOD_GENERATION=$(getCurrentGeneration);
   setData ".last_good_generation" "$LAST_GOOD_GENERATION"
   log "Generation $LAST_GOOD_GENERATION saved as succesful"
 fi
