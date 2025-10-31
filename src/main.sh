@@ -8,17 +8,17 @@ SCRIPT_DIR="$(dirname "${BASH_SOURCE[0]}")"
 
 if [[ $EUID -eq 0 ]]; then
   DEBUG=false
-  if [[ "$1" != "--daemonize" ]]; then
+  # if [[ "$1" != "--daemonize" ]]; then
     # nohup "$0" --daemonize >"$DATA_DIR/log" 2>"$DATA_DIR/err" </dev/null &
     # exit $?
-  fi
+  # fi
 else
   DEBUG=true
 fi
 
 source "$SCRIPT_DIR/utils.sh"
 
-COMMANDS=("yq" "nixos-rebuild" "awk" "sed")
+COMMANDS=("yq" "awk" "sed")
 for cmd in "${COMMANDS[@]}"; do
   command -v "$cmd" &> /dev/null;
   if [[ $? -ne 0 ]]; then
