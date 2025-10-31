@@ -92,12 +92,15 @@ in {
       description = "Auto Rollback Service";
       wantedBy = [ "multi-user.target" ];
       after = [ "network-online.target" ];
-      want = [ "network-online.target" ];
+      wants = [ "network-online.target" ];
       serviceConfig = {
         Type = "oneshot";
         User = "root";
         ExecStart = "${package}/bin/auto-rollback.sh";
-        Environment = "CONFIG_FILE=\"/etc/auto-rollback-service/config.json\" DATA_DIR=\"/var/lib/auto-rollback-service\"";
+        Environment = [
+          "CONFIG_FILE=/etc/auto-rollback-service/config.json"
+          "DATA_DIR=/var/lib/auto-rollback-service"
+        ];
         WorkingDirectory = "/var/lib/auto-rollback-service";
       };
     };
