@@ -1,7 +1,7 @@
 { config, pkgs, lib, ... }:
 
 let
-  package = pkgs.callPackage ./default.nix {};
+  package = pkgs.callPackage ./default.nix { inherit pkgs; };
 in {
   options.services.auto-rollback-service = {
     enable = lib.mkEnableOption "Enable the Auto Rollback Service";
